@@ -1,5 +1,4 @@
 # 2021-05-10 Irregular measurement with CMV in SOT data
-# Execute primary analyses
 
 ################################################################################
 # Load and setup data
@@ -9,7 +8,7 @@ library(geepack)
 library(gee)
 library(splines)
 
-source("H:/projects/cmv_sot/1-5_functions.R")
+source("1-5_functions.R")
 
 ################################################################################
 # Baseline Table 
@@ -88,6 +87,7 @@ library(geepack)
 library(data.table)
 #library(GLMMadaptive)
 library(geesmv)
+library(ggplot2)
 
 # Inverse intensity weighting ##################################################
 
@@ -118,6 +118,14 @@ im.coef <- data.frame(exp(iiwts.cmv$m$coefficients),
                  exp(confint(iiwts.cmv$m)[,2]))
 names(im.coef) <- c("HR", "LCI", "UCI")
 write.csv(im.coef, "H:/projects/cmv_sot/tables/intensity-model-2022-03-25.csv")
+
+# Export histogram of model weights
+png(filename="weight_histogram.png", width=4, height=3, units="in", res=300)
+ggplot(tibble(Weights = iiwts.cmv$iiw.weight, Fill = 1),
+       aes(x = Weights)) +
+  geom_histogram(bins=15) +
+  theme_classic()
+dev.off()
 
 # Fit GEE model
 iiw.fit.cmv <- iiwgee(
