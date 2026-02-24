@@ -155,20 +155,24 @@ cmvdat4 <- cmvdat3 %>%
          )
   
 # Graph
-heatmap <- ggplot(cmvdat4, aes(y=as.factor(id2), x=time, fill=test_2wk)) +
-  geom_tile() +
+heatmap <- ggplot(cmvdat4, aes(y=as.factor(id2), x=time, fill=test_2wk, color="")) +
+  geom_tile(lwd=0) +
   #coord_flip(expand=F) +
   theme_minimal() +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank(),
         #axis.text.x = element_blank()
         ) +
-  labs(fill = "Tests/\n2 weeks") +
   ylab("Patient") +
   xlab("Time (days)") +
-  scale_colour_manual(values=NA) +              
-  guides(color=guide_legend("Lost to\nfollow-up", override.aes=list(fill="grey40"))) +
-  scale_fill_viridis_c(na.value = "grey40", option="magma")
+  scale_fill_viridis_c(na.value = "grey40", option="magma",
+                       guide = guide_colorbar(order=1)) +
+  scale_colour_manual(values=NA, na.value=rgb(0, 0, 255, max = 255, alpha = 0)) +              
+  guides(
+         color=guide_legend(override.aes=list(fill="grey40"),
+                            order=2)) +
+  labs(fill = "Tests/\n2 weeks",
+       color = "Lost to\nfollow-up")
 
 tiff("H:/projects/cmv_sot/figures/heatmap_all.tiff", 
      res=300, units = "in", width=5, height=5)
