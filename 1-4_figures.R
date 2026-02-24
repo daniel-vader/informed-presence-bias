@@ -6,9 +6,12 @@ library(dplyr)
 library(tidyr)
 library(forcats)
 library(viridis)
+library(patchwork)
+library(ggnewscale)
 #library(hrbrthemes)
 
-source("H:/projects/cmv_sot/1-5_functions.R")
+source("1-5_functions.R")
+
 
 cmvdat <- loaddat(sel="cmv")
 
@@ -24,7 +27,9 @@ ggplot(cmvdat[as.numeric(cmvdat$id) < 30,], aes(y=id, x=time, fill=id)) +
   scale_fill_viridis(discrete=T)
 
 # Density plots ################################################################
-d.demo <- readRDS("Z:/18-015433_CMV in SOT_Downes/05 Data/dan_analytic_data/1_adat_2021-05-20.rds") %>%
+#ddir <- "Z:/18-015433_CMV in SOT_Downes/05 Data/dan_analytic_data/1_adat_2021-05-20.rds"
+ddir <- "B:/restricted/00_BSC_Daniel-Vader/06_irregular_measures/1_adat_2021-06-02.rds"
+d.demo <- readRDS(ddir) %>%
   mutate(blood_test_result = factor(blood_test_result, 
                                     levels=c(0,1), 
                                     labels=c("Negative", "Positive")),
@@ -130,14 +135,14 @@ cmvdat4 <- cmvdat3 %>%
                                ifelse(sot_type == "Liver", 4,
                                       ifelse(sot_type == "Lung", 6, 8)))),
          drsotf = factor(drsot, levels=c(1,2,3,4,5,6,7,8),
-                        labels=c(paste0("AR Kidney\n(N=", scmv.t[1,2], ")"), 
-                                 paste0("LR Kidney\n(N=", scmv.t[1,1], ")"),
-                                 paste0("AR Liver\n(N=", scmv.t[2,2], ")"),
-                                 paste0("LR Liver\n(N=", scmv.t[2,1], ")"),
-                                 paste0("AR Lung\n(N=", scmv.t[4,2] + scmv.t[5,2], ")"),
-                                 paste0("LR Lung\n(N=", scmv.t[4,1] + scmv.t[5,1], ")"),
-                                 paste0("AR Heart\n(N=", scmv.t[3,2] + scmv.t[6,2], ")"),
-                                 paste0("LR Heart\n(N=", scmv.t[3,1] + scmv.t[6,1], ")"))
+                        labels=c(paste0("At-risk, kidney\n(N=", scmv.t[1,2], ")"), 
+                                 paste0("Low-risk, kidney\n(N=", scmv.t[1,1], ")"),
+                                 paste0("At-risk, liver\n(N=", scmv.t[2,2], ")"),
+                                 paste0("Low-risk, liver\n(N=", scmv.t[2,1], ")"),
+                                 paste0("At-risk, lung\n(N=", scmv.t[4,2] + scmv.t[5,2], ")"),
+                                 paste0("Low-risk, lung\n(N=", scmv.t[4,1] + scmv.t[5,1], ")"),
+                                 paste0("At-risk, heart\n(N=", scmv.t[3,2] + scmv.t[6,2], ")"),
+                                 paste0("Low-risk, heart\n(N=", scmv.t[3,1] + scmv.t[6,1], ")"))
                         )
          ) %>%
   complete(id2, time) %>%
@@ -150,7 +155,7 @@ cmvdat4 <- cmvdat3 %>%
          )
   
 # Graph
-heatmap <- ggplot(cmvdat4, aes(y=as.factor(id2), x=time, fill=test_2wk, color="")) +
+heatmap <- ggplot(cmvdat4, aes(y=as.factor(id2), x=time, fill=test_2wk)) +
   geom_tile() +
   #coord_flip(expand=F) +
   theme_minimal() +
@@ -172,7 +177,7 @@ dev.off()
 
 
 # Graph by risk group and organ type
-tiff("H:/projects/cmv_sot/figures/heatmap_organdr.tiff", 
+png("figures/heatmap_organdr_revised.png", 
      res=300, units = "in", width=5, height=6)
 heatmap + #coord_flip(expand=F) +
   facet_grid(space="free", scales="free", rows=vars(drsotf)) +
@@ -214,7 +219,7 @@ dev.off()
 library(tidyverse)
 library(furniture)
 
-source("H:/projects/cmv_sot/1-5_functions.R")
+source("1-5_functions.R")
 
 cmvdat.tab <- loaddat(sel="cmv") %>% 
   group_by(id) %>%
@@ -265,3 +270,149 @@ for(i in 1:length(nvars)){
 }
 
 write.csv(tabout, "H:/projects/cmv_sot/tables/t1.csv")
+
+# Person-day histograms and bar plots #########################################
+
+# Basic data setup
+cmvdat.all <- loaddat(sel="none") %>% 
+  filter(time <= endt) %>%
+  mutate(week4 = ceiling(time / 28),
+         cmv_f = factor(cmv, 
+                      levels=0:1,
+                      labels = c("CMV -", "CMV +")),
+         sot_type = ifelse(sot_type == 0, "Kidney",
+                           ifelse(sot_type == 1, "Liver",
+                                  ifelse(sot_type == 3 | sot_type == 4, "Lung", "Heart"))),
+         drany = factor(drany,
+                        levels=1:0,
+                        labels=c("At-risk", "Low-risk"))
+         )
+
+weeklabels <- c("3-6", "7-10", "11-14", "15-18",
+                       "19-22", "23-26", "27-30",
+                       "31-34", "35-38", "39-42",
+                       "43-46", "47-50", "51-54")
+
+# Tests and test positives by person-day
+cmvdat.pt.a <- cmvdat.all %>%
+  group_by(week4, cmv_f) %>%
+  summarize(person_time = n(),
+            cmv_tests = sum(blood_cmv_test)) %>%
+  ungroup() %>%
+  group_by(week4) %>%
+  mutate(
+    person_time = sum(person_time)
+  ) %>%
+  filter(!is.na(cmv_f)) %>%
+  ungroup() %>%
+  mutate(testrate100 = (cmv_tests/person_time) * 100)
+  
+
+a1 <- ggplot(data=cmvdat.pt.a, 
+       aes(x=week4, y=testrate100, fill=cmv_f)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(breaks=seq(0, 8, by = 2), limits=c(0,9)) +
+  scale_fill_viridis("Testing result", discrete=T, option="B", begin=.2, end=.7) +
+  ylab("Rate per 100 person-days") +
+  xlab("Week") +
+  scale_x_continuous(breaks = 1:13, 
+                     labels=weeklabels) +
+  theme_classic()
+
+# Testing and positivity by organ
+# Testing
+cmvdat.pt.b.1 <- cmvdat.all %>%
+  group_by(week4, sot_type) %>%
+  summarize(person_time = n(),
+            cmv_tests = sum(blood_cmv_test)) %>%
+  ungroup() %>%
+  group_by(week4) %>%
+  ungroup() %>%
+  mutate(testrate100 = (cmv_tests/person_time) * 100)
+
+b1 <- ggplot(data=cmvdat.pt.b.1, 
+       aes(x=week4, y=testrate100, fill=sot_type)) +
+  geom_bar(stat="identity", position = position_dodge()) +
+  scale_fill_grey("Organ transplant type\n(Testing rate)", start=.4) +
+  scale_y_continuous(breaks=seq(0, 8, by = 2), limits=c(0,9)) +
+  theme_classic()
+
+cmvdat.pt.b.2 <- cmvdat.all %>%
+  group_by(week4, sot_type) %>%
+  summarize(person_time = n(),
+            cmv_positive = sum(cmv, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(posrate100 = (cmv_positive/person_time) * 100,
+         posrate100 = case_when(posrate100 == 0 ~ .05,
+                                  T ~ posrate100))
+
+b2 <- #ggplot(data=cmvdat.pt.b.2, 
+       #aes(x=week4, y=posrate100, fill=sot_type)) +
+  b1 +
+  new_scale("fill") +
+  geom_bar(aes(x=cmvdat.pt.b.2$week4, y=cmvdat.pt.b.2$posrate100,
+               fill=cmvdat.pt.b.2$sot_type),
+           stat="identity", position = position_dodge()) +
+  scale_fill_viridis("Organ transplant type\n(CMV rate)", discrete = T, option = "C", end=.8) +
+  ylab("Rate per 100 person-days") +
+  xlab("Week") +
+  scale_x_continuous(breaks = 1:13, 
+                     labels=weeklabels) +
+  theme_classic()
+
+b2
+
+# Testing and positivity by risk group
+cmvdat.pt.c.1 <- cmvdat.all %>%
+  group_by(week4, drany) %>%
+  summarize(person_time = n(),
+            cmv_tests = sum(blood_cmv_test)) %>%
+  ungroup() %>%
+  group_by(week4) %>%
+  ungroup() %>%
+  mutate(testrate100 = (cmv_tests/person_time) * 100)
+
+c1 <- ggplot(data=cmvdat.pt.c.1, 
+             aes(x=week4, y=testrate100, fill=drany)) +
+  geom_bar(stat="identity", position = position_dodge()) +
+  scale_fill_grey("CMV risk group\n(Testing rate)", start=.4) +
+  scale_y_continuous(breaks=seq(0, 8, by = 2), limits=c(0,9)) +
+  theme_classic()
+
+cmvdat.pt.c.2 <- cmvdat.all %>%
+  group_by(week4, drany) %>%
+  summarize(person_time = n(),
+            cmv_positive = sum(cmv, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(posrate100 = (cmv_positive/person_time) * 100,
+         posrate100 = case_when(posrate100 == 0 ~ .05,
+                                T ~ posrate100))
+
+c2 <- #ggplot(data=cmvdat.pt.b.2, 
+  #aes(x=week4, y=posrate100, fill=sot_type)) +
+  c1 +
+  new_scale("fill") +
+  geom_bar(aes(x=cmvdat.pt.c.2$week4, y=cmvdat.pt.c.2$posrate100,
+               fill=cmvdat.pt.c.2$drany),
+           stat="identity", position = position_dodge()) +
+  scale_fill_viridis("CMV risk group\n(CMV rate)", discrete = T, option = "C", end=.8) +
+  ylab("Rate per 100 person-days") +
+  xlab("Week") +
+  scale_x_continuous(breaks = 1:13, 
+                     labels=weeklabels) +
+  theme_classic()
+
+c2
+
+png("figures/f2.png", height=10, width=5, units="in", res=300)
+a1 /  b2 / c2 +
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") & 
+  theme(legend.justification = "left", 
+        plot.margin = margin(0,0,0,0),
+        legend.margin = margin(0,0,0,0),
+        legend.text = element_text(size=8),
+        legend.title = element_text(size=10),
+        legend.key.size = unit(.5,"cm"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+dev.off()
+
